@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Problem Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; display: flex; height: 100vh; background: #f5f5f5; color: #222; }
+
+  /* Left panel */
+  #left { width: 280px; min-width: 200px; display: flex; flex-direction: column; background: #fff; border-right: 1px solid #ddd; }
+  #left-header { padding: 10px; border-bottom: 1px solid #ddd; display: flex; flex-direction: column; gap: 6px; }
+  #left-header h2 { font-size: 15px; font-weight: 600; }
+  #left-actions { display: flex; gap: 4px; flex-wrap: wrap; }
+  #problem-list { flex: 1; overflow-y: auto; }
+
+  .problem-item { padding: 8px 10px; border-bottom: 1px solid #eee; cursor: pointer; display: flex; justify-content: space-between; align-items: flex-start; }
+  .problem-item:hover { background: #f0f4ff; }
+  .problem-item.active { background: #e8eeff; }
+  .problem-item-text { flex: 1; font-size: 13px; line-height: 1.4; overflow: hidden; }
+  .problem-item-num { font-size: 11px; color: #888; flex-shrink: 0; margin-right: 6px; padding-top: 1px; }
+  .problem-item-actions { display: flex; gap: 3px; flex-shrink: 0; margin-left: 6px; }
+
+  /* Right panel */
+  #right { flex: 1; overflow-y: auto; padding: 20px; }
+  #right-inner { max-width: 720px; }
+  #right h2 { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+
+  .field-group { margin-bottom: 14px; }
+  label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+  textarea, input[type=text], input[type=number], select {
+    width: 100%; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;
+    font-family: inherit; font-size: 13px; background: #fff;
+  }
+  textarea { resize: vertical; }
+  input[type=text]:focus, input[type=number]:focus, textarea:focus, select:focus {
+    outline: 2px solid #4a80f5; border-color: transparent;
+  }
+
+  .checkbox-row { display: flex; align-items: center; gap: 6px; }
+  .checkbox-row input { width: auto; }
+
+  .grader-args { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px; margin-top: 8px; }
+
+  /* Sub-grader list */
+  .subgrader-item { background: #fff; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-bottom: 8px; position: relative; }
+  .subgrader-item select, .subgrader-item input { margin-top: 6px; }
+  .subgrader-item .remove-btn { position: absolute; top: 6px; right: 6px; }
+  .subgrader-args { margin-top: 8px; }
+
+  /* Buttons */
+  button {
+    padding: 5px 10px; border: 1px solid #bbb; border-radius: 4px;
+    background: #fff; cursor: pointer; font-size: 13px; white-space: nowrap;
+  }
+  button:hover { background: #f0f0f0; }
+  button.primary { background: #4a80f5; color: #fff; border-color: #3a70e5; }
+  button.primary:hover { background: #3a70e5; }
+  button.danger { background: #e55; color: #fff; border-color: #c44; }
+  button.danger:hover { background: #c44; }
+  button.small { padding: 3px 7px; font-size: 12px; }
+
+  #form-actions { display: flex; gap: 8px; margin-top: 16px; }
+  .empty-state { padding: 30px; text-align: center; color: #999; }
+
+  #toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: #fff;
+    padding: 8px 16px; border-radius: 6px; display: none; font-size: 13px; z-index: 100; }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="left-header">
+    <h2>Problems</h2>
+    <div id="left-actions">
+      <button onclick="addNew()">+ Add New</button>
+      <button onclick="document.getElementById('import-file').click()">Import</button>
+      <button onclick="exportJSONL()">Export</button>
+      <input type="file" id="import-file" accept=".jsonl,.txt" style="display:none" onchange="handleImport(event)">
+    </div>
+  </div>
+  <div id="problem-list"></div>
+</div>
+
+<div id="right">
+  <div id="right-inner">
+    <div id="no-selection" class="empty-state">Select a problem or click "Add New"</div>
+    <div id="edit-form" style="display:none">
+      <h2 id="form-title">Edit Problem</h2>
+
+      <div class="field-group">
+        <label for="f-problem">Problem</label>
+        <textarea id="f-problem" rows="3" placeholder="Enter the question..."></textarea>
+      </div>
+
+      <div class="field-group">
+        <label for="f-reference">Reference Answer</label>
+        <textarea id="f-reference" rows="2" placeholder="Expected answer..."></textarea>
+      </div>
+
+      <div class="field-group">
+        <label for="f-rationale">Rationale <span style="font-weight:normal;color:#888">(optional)</span></label>
+        <textarea id="f-rationale" rows="2" placeholder="Why this is the correct answer..."></textarea>
+      </div>
+
+      <div class="field-group">
+        <label for="f-grader-type">Grader Type</label>
+        <select id="f-grader-type" onchange="onGraderTypeChange()">
+          <option value="StrictStringInclusion">StrictStringInclusion</option>
+          <option value="SoftOverlap">SoftOverlap</option>
+          <option value="RegexMatch">RegexMatch</option>
+          <option value="LLMGrader">LLMGrader</option>
+          <option value="CompositeGrader">CompositeGrader</option>
+        </select>
+        <div class="grader-args" id="grader-args-container"></div>
+      </div>
+
+      <div id="form-actions">
+        <button class="primary" onclick="saveProblem()">Save</button>
+        <button onclick="cancelEdit()">Cancel</button>
+        <button class="danger" id="delete-btn" onclick="deleteCurrentProblem()" style="margin-left:auto">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+let problems = [];
+let currentIdx = -1;  // -1 = new problem
+
+// ─── Render problem list ───────────────────────────────────────────────────
+function renderList() {
+  const el = document.getElementById('problem-list');
+  if (problems.length === 0) {
+    el.innerHTML = '<div class="empty-state">No problems yet</div>';
+    return;
+  }
+  el.innerHTML = problems.map((p, i) => `
+    <div class="problem-item ${i === currentIdx ? 'active' : ''}" onclick="selectProblem(${i})">
+      <span class="problem-item-num">${i+1}</span>
+      <span class="problem-item-text">${escHtml(p.problem.slice(0, 80))}${p.problem.length > 80 ? '…' : ''}</span>
+      <span class="problem-item-actions">
+        <button class="small" onclick="event.stopPropagation();selectProblem(${i})">Edit</button>
+        <button class="small danger" onclick="event.stopPropagation();deleteProblem(${i})">Del</button>
+      </span>
+    </div>`).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Selection ────────────────────────────────────────────────────────────
+function selectProblem(idx) {
+  currentIdx = idx;
+  renderList();
+  loadForm(problems[idx]);
+  showForm(true);
+}
+
+function addNew() {
+  currentIdx = -1;
+  renderList();
+  loadForm(null);
+  showForm(false);
+}
+
+function showForm(isEdit) {
+  document.getElementById('no-selection').style.display = 'none';
+  document.getElementById('edit-form').style.display = 'block';
+  document.getElementById('form-title').textContent = isEdit ? 'Edit Problem' : 'New Problem';
+  document.getElementById('delete-btn').style.display = isEdit ? 'inline-block' : 'none';
+}
+
+function cancelEdit() {
+  currentIdx = -1;
+  renderList();
+  document.getElementById('no-selection').style.display = 'block';
+  document.getElementById('edit-form').style.display = 'none';
+}
+
+// ─── Load form from problem object ────────────────────────────────────────
+function loadForm(p) {
+  document.getElementById('f-problem').value = p ? p.problem : '';
+  document.getElementById('f-reference').value = p ? (p.reference || '') : '';
+  document.getElementById('f-rationale').value = p ? (p.rationale || '') : '';
+
+  const grader = p ? p.grader : {type: 'StrictStringInclusion', args: {substring: '', case_sensitive: true}};
+  document.getElementById('f-grader-type').value = grader.type;
+  renderGraderArgs(grader.type, grader.args || {});
+}
+
+// ─── Grader args rendering ────────────────────────────────────────────────
+function onGraderTypeChange() {
+  const type = document.getElementById('f-grader-type').value;
+  renderGraderArgs(type, {});
+}
+
+function renderGraderArgs(type, args) {
+  const c = document.getElementById('grader-args-container');
+  c.innerHTML = graderArgsHTML(type, args, 'main');
+  if (type === 'CompositeGrader') {
+    renderSubgraderList(args.graders || []);
+  }
+}
+
+function graderArgsHTML(type, args, prefix) {
+  switch (type) {
+    case 'StrictStringInclusion': return `
+      <div class="field-group">
+        <label>Substring</label>
+        <input type="text" id="${prefix}-substring" value="${escHtml(args.substring || '')}">
+      </div>
+      <div class="field-group">
+        <div class="checkbox-row">
+          <input type="checkbox" id="${prefix}-case_sensitive" ${args.case_sensitive !== false ? 'checked' : ''}>
+          <label for="${prefix}-case_sensitive" style="margin:0;font-weight:normal">Case sensitive</label>
+        </div>
+      </div>`;
+
+    case 'SoftOverlap': return `
+      <div class="field-group">
+        <label>Reference</label>
+        <input type="text" id="${prefix}-so-reference" value="${escHtml(args.reference || '')}">
+      </div>
+      <div class="field-group">
+        <label>Similarity Threshold (0–1)</label>
+        <input type="number" id="${prefix}-similarity_threshold" value="${args.similarity_threshold !== undefined ? args.similarity_threshold : 0.2}" min="0" max="1" step="0.05">
+      </div>`;
+
+    case 'RegexMatch': return `
+      <div class="field-group">
+        <label>Pattern</label>
+        <input type="text" id="${prefix}-pattern" value="${escHtml(args.pattern || '')}">
+      </div>
+      <div class="field-group">
+        <label>Flags (integer)</label>
+        <input type="number" id="${prefix}-flags" value="${args.flags || 0}" min="0">
+      </div>`;
+
+    case 'LLMGrader': return `
+      <div class="field-group">
+        <label>Model</label>
+        <input type="text" id="${prefix}-llm-model" value="${escHtml(args.model || 'openai/gpt-4o-mini')}">
+      </div>
+      <div class="field-group">
+        <label>Reference (embedded in prompt)</label>
+        <input type="text" id="${prefix}-llm-reference" value="${escHtml(args.reference || '')}">
+      </div>
+      <div class="field-group">
+        <label>Prompt (use {reference} and {response} placeholders)</label>
+        <textarea id="${prefix}-llm-prompt" rows="4">${escHtml(args.prompt || '')}</textarea>
+      </div>`;
+
+    case 'CompositeGrader': return `
+      <div class="field-group">
+        <label>Logic</label>
+        <select id="${prefix}-logic">
+          <option value="AND" ${(args.logic || 'AND') === 'AND' ? 'selected' : ''}>AND</option>
+          <option value="OR" ${args.logic === 'OR' ? 'selected' : ''}>OR</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <div class="checkbox-row">
+          <input type="checkbox" id="${prefix}-partial_credit" ${args.partial_credit ? 'checked' : ''}>
+          <label for="${prefix}-partial_credit" style="margin:0;font-weight:normal">Partial credit</label>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Sub-graders <span style="font-weight:normal;color:#888">(non-LLM only)</span></label>
+        <div id="subgrader-list"></div>
+        <button type="button" onclick="addSubgrader()">+ Add Sub-grader</button>
+      </div>`;
+
+    default: return '';
+  }
+}
+
+// ─── Sub-grader list (CompositeGrader) ────────────────────────────────────
+let subgraders = [];
+
+function renderSubgraderList(initial) {
+  subgraders = initial.map(g => ({...g}));
+  refreshSubgraderList();
+}
+
+function refreshSubgraderList() {
+  const list = document.getElementById('subgrader-list');
+  if (!list) return;
+  list.innerHTML = subgraders.map((sg, i) => `
+    <div class="subgrader-item" id="sg-${i}">
+      <strong style="font-size:12px">Sub-grader ${i+1}</strong>
+      <button class="small danger remove-btn" onclick="removeSubgrader(${i})">×</button>
+      <div>
+        <label style="font-size:12px;font-weight:600;margin-top:6px;display:block">Type</label>
+        <select onchange="updateSubgraderType(${i}, this.value)">
+          ${['StrictStringInclusion','SoftOverlap','RegexMatch'].map(t =>
+            `<option value="${t}" ${sg.type === t ? 'selected' : ''}>${t}</option>`
+          ).join('')}
+        </select>
+      </div>
+      <div class="subgrader-args">${subgraderArgsHTML(i, sg)}</div>
+    </div>`).join('');
+}
+
+function subgraderArgsHTML(i, sg) {
+  const args = sg.args || {};
+  switch (sg.type) {
+    case 'StrictStringInclusion': return `
+      <label style="font-size:12px;font-weight:600">Substring</label>
+      <input type="text" oninput="updateSubgraderArg(${i},'substring',this.value)" value="${escHtml(args.substring||'')}">
+      <div class="checkbox-row" style="margin-top:6px">
+        <input type="checkbox" id="sg-cs-${i}" onchange="updateSubgraderArg(${i},'case_sensitive',this.checked)" ${args.case_sensitive!==false?'checked':''}>
+        <label for="sg-cs-${i}" style="margin:0;font-weight:normal;font-size:12px">Case sensitive</label>
+      </div>`;
+    case 'SoftOverlap': return `
+      <label style="font-size:12px;font-weight:600">Reference</label>
+      <input type="text" oninput="updateSubgraderArg(${i},'reference',this.value)" value="${escHtml(args.reference||'')}">
+      <label style="font-size:12px;font-weight:600;margin-top:6px;display:block">Threshold</label>
+      <input type="number" min="0" max="1" step="0.05" oninput="updateSubgraderArg(${i},'similarity_threshold',parseFloat(this.value))" value="${args.similarity_threshold!==undefined?args.similarity_threshold:0.2}">`;
+    case 'RegexMatch': return `
+      <label style="font-size:12px;font-weight:600">Pattern</label>
+      <input type="text" oninput="updateSubgraderArg(${i},'pattern',this.value)" value="${escHtml(args.pattern||'')}">
+      <label style="font-size:12px;font-weight:600;margin-top:6px;display:block">Flags</label>
+      <input type="number" min="0" oninput="updateSubgraderArg(${i},'flags',parseInt(this.value)||0)" value="${args.flags||0}">`;
+    default: return '';
+  }
+}
+
+function addSubgrader() {
+  subgraders.push({type: 'StrictStringInclusion', args: {substring: '', case_sensitive: true}});
+  refreshSubgraderList();
+}
+
+function removeSubgrader(i) {
+  subgraders.splice(i, 1);
+  refreshSubgraderList();
+}
+
+function updateSubgraderType(i, type) {
+  subgraders[i] = {type, args: {}};
+  refreshSubgraderList();
+}
+
+function updateSubgraderArg(i, key, val) {
+  if (!subgraders[i].args) subgraders[i].args = {};
+  subgraders[i].args[key] = val;
+}
+
+// ─── Read grader from form ─────────────────────────────────────────────────
+function getGraderFromForm() {
+  const type = document.getElementById('f-grader-type').value;
+  let args = {};
+
+  switch (type) {
+    case 'StrictStringInclusion':
+      args.substring = document.getElementById('main-substring').value;
+      args.case_sensitive = document.getElementById('main-case_sensitive').checked;
+      break;
+    case 'SoftOverlap':
+      args.reference = document.getElementById('main-so-reference').value;
+      args.similarity_threshold = parseFloat(document.getElementById('main-similarity_threshold').value) || 0.2;
+      break;
+    case 'RegexMatch':
+      args.pattern = document.getElementById('main-pattern').value;
+      args.flags = parseInt(document.getElementById('main-flags').value) || 0;
+      break;
+    case 'LLMGrader': {
+      args.model = document.getElementById('main-llm-model').value || 'openai/gpt-4o-mini';
+      const ref = document.getElementById('main-llm-reference').value;
+      if (ref) args.reference = ref;
+      const prompt = document.getElementById('main-llm-prompt').value;
+      if (prompt) args.prompt = prompt;
+      break;
+    }
+    case 'CompositeGrader':
+      args.logic = document.getElementById('main-logic').value;
+      args.partial_credit = document.getElementById('main-partial_credit').checked;
+      args.graders = subgraders.map(sg => ({type: sg.type, args: {...(sg.args||{})}}));
+      break;
+  }
+
+  return {type, args};
+}
+
+// ─── Save / Delete ─────────────────────────────────────────────────────────
+function saveProblem() {
+  const problem = document.getElementById('f-problem').value.trim();
+  if (!problem) { showToast('Problem text is required'); return; }
+
+  const p = {
+    problem,
+    reference: document.getElementById('f-reference').value.trim(),
+    grader: getGraderFromForm(),
+  };
+  const rationale = document.getElementById('f-rationale').value.trim();
+  if (rationale) p.rationale = rationale;
+
+  if (currentIdx === -1) {
+    problems.push(p);
+    currentIdx = problems.length - 1;
+  } else {
+    problems[currentIdx] = p;
+  }
+
+  renderList();
+  document.getElementById('form-title').textContent = 'Edit Problem';
+  document.getElementById('delete-btn').style.display = 'inline-block';
+  showToast('Saved');
+}
+
+function deleteProblem(idx) {
+  if (!confirm(`Delete problem ${idx + 1}?`)) return;
+  problems.splice(idx, 1);
+  if (currentIdx === idx) {
+    currentIdx = -1;
+    document.getElementById('no-selection').style.display = 'block';
+    document.getElementById('edit-form').style.display = 'none';
+  } else if (currentIdx > idx) {
+    currentIdx--;
+  }
+  renderList();
+  showToast('Deleted');
+}
+
+function deleteCurrentProblem() {
+  if (currentIdx >= 0) deleteProblem(currentIdx);
+}
+
+// ─── Import / Export ──────────────────────────────────────────────────────
+function handleImport(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const lines = e.target.result.split('\n').filter(l => l.trim());
+    let imported = 0, errors = 0;
+    for (const line of lines) {
+      try {
+        problems.push(JSON.parse(line));
+        imported++;
+      } catch { errors++; }
+    }
+    renderList();
+    showToast(`Imported ${imported} problem(s)${errors ? `, ${errors} error(s)` : ''}`);
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+function exportJSONL() {
+  if (problems.length === 0) { showToast('No problems to export'); return; }
+  const content = problems.map(p => JSON.stringify(p)).join('\n') + '\n';
+  const blob = new Blob([content], {type: 'application/x-ndjson'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'problems.jsonl';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`Exported ${problems.length} problem(s)`);
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 2500);
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────
+renderList();
+onGraderTypeChange();
+</script>
+</body>
+</html>

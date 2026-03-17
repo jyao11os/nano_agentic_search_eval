@@ -1,0 +1,3 @@
+x-ai/grok-4.1-fast
+minimax/minimax-m2.5,minimax/highspeed
+stepfun/step-3.5-flash:free

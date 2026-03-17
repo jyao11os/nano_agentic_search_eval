@@ -1,0 +1,16 @@
+anthropic/claude-sonnet-4.6
+deepseek/deepseek-v3.2
+google/gemini-3.1-pro-preview
+z-ai/glm-5,z-ai
+z-ai/glm-5-turbo,z-ai
+openai/gpt-5.3-codex
+openai/gpt-5.4
+x-ai/grok-4.1-fast
+x-ai/grok-4.20-beta
+openrouter/healer-alpha
+openrouter/hunter-alpha
+moonshotai/kimi-k2.5,moonshotai/int4
+minimax/minimax-m2.1,minimax/highspeed
+qwen/qwen3.5-397b-a17b,alibaba
+qwen/qwen3.5-9b
+stepfun/step-3.5-flash,stepfun/fp8

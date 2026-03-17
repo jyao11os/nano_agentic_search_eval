@@ -1,0 +1,2 @@
+{"problem": "What is the chemical symbol for gold?", "reference": "Au", "rationale": "Gold's chemical symbol is Au, from the Latin 'aurum'.", "grader": {"type": "StrictStringInclusion", "args": {"substring": "Au", "case_sensitive": true}}}
+{"problem": "How many bones are in the adult human body?", "reference": "206", "rationale": "The adult human body has 206 bones.", "grader": {"type": "StrictStringInclusion", "args": {"substring": "206", "case_sensitive": true}}}
