@@ -112,6 +112,22 @@ class TestParseArgs:
             assert config["model_list"] == "tests/tiny_model_list.txt"
             assert config["output"] == "./output"
             assert config["timeout"] == 120
+            assert config["engine"] == "exa"
+        finally:
+            sys.argv = old_argv
+
+    def test_engine_flag(self):
+        from eval import parse_args
+        old_argv = sys.argv
+        sys.argv = [
+            "eval.py",
+            "--problems", "tests/tiny_problems.jsonl",
+            "--model_list", "tests/tiny_model_list.txt",
+            "--engine", "google",
+        ]
+        try:
+            config = parse_args()
+            assert config["engine"] == "google"
         finally:
             sys.argv = old_argv
 
@@ -349,6 +365,26 @@ class TestIntegration:
             assert os.path.exists(resp_file)
             inter_file = os.path.join(tmpdir, "test-model", "interactions", "problem_000.txt")
             assert os.path.exists(inter_file)
+
+    def test_engine_passed_to_api(self):
+        problems = load_problems(os.path.join(TESTS_DIR, "tiny_problems.jsonl"))[:1]
+        model_entry = {"model": "test/model", "provider": None, "short_name": "engine-test"}
+
+        canned = {
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": "Au"}]}],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = canned
+        mock_resp.raise_for_status = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = {"output": tmpdir, "timeout": 10, "max_results": 5,
+                      "api_key": "test-key", "engine": "google"}
+            with patch("eval.requests.post", return_value=mock_resp) as mock_post:
+                run_model_eval(model_entry, problems, config)
+            plugin = mock_post.call_args[1]["json"]["plugins"][0]
+            assert plugin["engine"] == "google"
 
     def test_run_model_eval_timeout(self):
         import requests as req_lib

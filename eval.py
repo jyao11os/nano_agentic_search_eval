@@ -53,6 +53,7 @@ def parse_args() -> dict:
     parser.add_argument("--timeout", type=int, default=None, help="API timeout in seconds")
     parser.add_argument("--max_results", type=int, default=None, help="Max web search results")
     parser.add_argument("--api_key", default=None, help="OpenRouter API key")
+    parser.add_argument("--engine", default=None, help="Web search engine (default: exa)")
 
     args = parser.parse_args()
 
@@ -60,6 +61,7 @@ def parse_args() -> dict:
         "output": "./output",
         "timeout": 120,
         "max_results": 5,
+        "engine": "exa",
     }
 
     if args.config:
@@ -81,6 +83,8 @@ def parse_args() -> dict:
         config["max_results"] = args.max_results
     if args.api_key is not None:
         config["api_key"] = args.api_key
+    if args.engine is not None:
+        config["engine"] = args.engine
 
     if "problems" not in config:
         parser.error("--problems is required (or set in YAML config)")
@@ -94,11 +98,12 @@ def call_responses_api(model_entry: dict, prompt: str, config: dict) -> dict:
     api_key = config.get("api_key") or os.environ.get("OPENROUTER_API_KEY")
     max_results = config.get("max_results", 5)
     timeout = config.get("timeout", 120)
+    engine = config.get("engine", "exa")
 
     body = {
         "model": model_entry["model"],
         "input": prompt,
-        "plugins": [{"id": "web", "max_results": max_results}],
+        "plugins": [{"id": "web", "max_results": max_results, "engine": engine}],
     }
 
     if model_entry.get("provider"):
