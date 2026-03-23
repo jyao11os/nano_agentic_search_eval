@@ -83,18 +83,24 @@ class TestLoadProblems:
         assert "problem" in p
         assert "reference" in p
         assert "grader" in p
-        assert p["grader"]["type"] == "StrictStringInclusion"
 
-    def test_gold_problem(self):
+    def test_carabao_cup_problem(self):
         path = os.path.join(TESTS_DIR, "tiny_problems.jsonl")
         problems = load_problems(path)
-        assert "gold" in problems[0]["problem"].lower()
-        assert problems[0]["grader"]["args"]["substring"] == "Au"
+        assert "Carabao Cup" in problems[0]["problem"]
+        assert problems[0]["reference"] == "Manchester City"
+        assert problems[0]["grader"]["type"] == "StrictStringInclusion"
+        assert problems[0]["grader"]["args"]["substring"] == "Manchester City"
 
-    def test_bones_problem(self):
+    def test_arsenal_problem(self):
         path = os.path.join(TESTS_DIR, "tiny_problems.jsonl")
         problems = load_problems(path)
-        assert "206" in problems[1]["reference"]
+        assert "Arsenal" in problems[1]["problem"]
+        assert problems[1]["reference"] == "4"
+        assert problems[1]["grader"]["type"] == "CompositeGrader"
+        graders = problems[1]["grader"]["args"]["graders"]
+        assert len(graders) == 2
+        assert problems[1]["grader"]["args"]["logic"] == "OR"
 
 
 class TestParseArgs:
@@ -313,18 +319,18 @@ class TestResumeLogic:
 
 
 class TestIntegration:
-    def test_run_model_eval_gold_problem(self):
+    def test_run_model_eval_carabao_cup_problem(self):
         problems_path = os.path.join(TESTS_DIR, "tiny_problems.jsonl")
-        problems = load_problems(problems_path)[:1]  # just gold problem
+        problems = load_problems(problems_path)[:1]  # just Carabao Cup problem
 
         model_entry = {"model": "test/model", "provider": None, "short_name": "test-model"}
 
         canned_response = {
             "output": [
-                {"type": "web_search_call", "queries": ["chemical symbol gold"]},
+                {"type": "web_search_call", "queries": ["2025-2026 Carabao Cup winner"]},
                 {
                     "type": "message",
-                    "content": [{"type": "output_text", "text": "The chemical symbol for gold is Au."}],
+                    "content": [{"type": "output_text", "text": "Manchester City won the 2025-26 Carabao Cup."}],
                 },
             ],
             "usage": {"input_tokens": 100, "output_tokens": 50},
