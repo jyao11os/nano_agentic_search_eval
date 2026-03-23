@@ -243,7 +243,7 @@ function graderArgsHTML(type, args, prefix) {
     case 'LLMGrader': return `
       <div class="field-group">
         <label>Model</label>
-        <input type="text" id="${prefix}-llm-model" value="${escHtml(args.model || 'openai/gpt-4o-mini')}">
+        <input type="text" id="${prefix}-llm-model" value="${escHtml(args.model || 'openai/gpt-4.1-mini')}">
       </div>
       <div class="field-group">
         <label>Reference (embedded in prompt)</label>

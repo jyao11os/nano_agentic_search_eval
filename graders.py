@@ -69,7 +69,7 @@ class RegexMatch(BaseGrader):
 
 
 class LLMGrader(BaseGrader):
-    def __init__(self, model: str = "openai/gpt-4o-mini", prompt: str = DEFAULT_PROMPT,
+    def __init__(self, model: str = "openai/gpt-4.1-mini", prompt: str = DEFAULT_PROMPT,
                  reference: str = "", api_key: str = None):
         self.model = model
         self.prompt = prompt
