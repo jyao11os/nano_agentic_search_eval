@@ -63,7 +63,7 @@ stepfun/step-3.5-flash:free
 Each line is a JSON object:
 
 ```json
-{"problem": "What is the chemical symbol for gold?", "reference": "Au", "rationale": "From Latin 'aurum'", "grader": {"type": "StrictStringInclusion", "args": {"substring": "Au", "case_sensitive": true}}}
+{"problem": "Which team won the 2025-2026 Carabao Cup?", "reference": "Manchester City", "rationale": "Manchester City won the 2025-26 Carabao Cup final.", "grader": {"type": "StrictStringInclusion", "args": {"substring": "Manchester City", "case_sensitive": true}}}
 ```
 
 Fields:
