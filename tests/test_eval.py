@@ -97,10 +97,8 @@ class TestLoadProblems:
         problems = load_problems(path)
         assert "Arsenal" in problems[1]["problem"]
         assert problems[1]["reference"] == "4"
-        assert problems[1]["grader"]["type"] == "CompositeGrader"
-        graders = problems[1]["grader"]["args"]["graders"]
-        assert len(graders) == 2
-        assert problems[1]["grader"]["args"]["logic"] == "OR"
+        assert problems[1]["grader"]["type"] == "IntegerMatch"
+        assert problems[1]["grader"]["args"]["value"] == 4
 
 
 class TestParseArgs:

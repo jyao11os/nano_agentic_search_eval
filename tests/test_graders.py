@@ -6,6 +6,8 @@ from graders import (
     StrictStringInclusion,
     SoftOverlap,
     RegexMatch,
+    IntegerMatch,
+    NumericMatch,
     LLMGrader,
     CustomGrader,
     CompositeGrader,
@@ -200,6 +202,205 @@ class TestCompositeGrader:
         assert g("anything") == 0.0
 
 
+class TestIntegerMatch:
+    # ── digit form ──────────────────────────────────────────────────────────
+    def test_digit_in_sentence(self):
+        assert IntegerMatch(4)("Arsenal have lost 4 consecutive finals") == 1.0
+
+    def test_digit_with_punctuation(self):
+        assert IntegerMatch(4)("The answer is 4.") == 1.0
+
+    def test_digit_ordinal_suffix(self):
+        # "4th" still contains a standalone digit 4
+        assert IntegerMatch(4)("4th consecutive final") == 1.0
+
+    def test_digit_no_match_larger(self):
+        assert IntegerMatch(4)("14 finals") == 0.0
+
+    def test_digit_no_match_prefix(self):
+        assert IntegerMatch(4)("24") == 0.0
+
+    def test_digit_no_match_suffix(self):
+        assert IntegerMatch(4)("40") == 0.0
+
+    # ── word form ────────────────────────────────────────────────────────────
+    def test_word_lowercase(self):
+        assert IntegerMatch(4)("They have lost four consecutive finals") == 1.0
+
+    def test_word_capitalized(self):
+        assert IntegerMatch(4)("Four finals have been lost") == 1.0
+
+    def test_word_with_punctuation(self):
+        assert IntegerMatch(4)("The count is four.") == 1.0
+
+    def test_word_no_match_fourteen(self):
+        assert IntegerMatch(4)("fourteen") == 0.0
+
+    def test_word_no_match_twenty_four(self):
+        # "four" in "twenty-four" should NOT match when looking for 4
+        assert IntegerMatch(4)("twenty-four") == 0.0
+
+    def test_word_no_match_forty_four(self):
+        assert IntegerMatch(4)("forty-four") == 0.0
+
+    def test_word_no_match_fourth(self):
+        # ordinal "fourth" should not match cardinal "four"
+        assert IntegerMatch(4)("the fourth final") == 0.0
+
+    # ── compound word (value=24) ─────────────────────────────────────────────
+    def test_compound_digit(self):
+        assert IntegerMatch(24)("24 hours") == 1.0
+
+    def test_compound_word(self):
+        assert IntegerMatch(24)("twenty-four hours") == 1.0
+
+    def test_compound_word_case_insensitive(self):
+        assert IntegerMatch(24)("Twenty-Four") == 1.0
+
+    def test_compound_no_match_in_larger(self):
+        # "twenty-four" in "one-hundred-twenty-four" (=124) should NOT match 24
+        assert IntegerMatch(24)("one-hundred-twenty-four") == 0.0
+
+    def test_compound_no_match_just_four(self):
+        assert IntegerMatch(24)("four") == 0.0
+
+    def test_compound_no_match_digit_four(self):
+        assert IntegerMatch(24)("only 4 here") == 0.0
+
+    # ── value=7 ─────────────────────────────────────────────────────────────
+    def test_seven_digit(self):
+        assert IntegerMatch(7)("7 days a week") == 1.0
+
+    def test_seven_word(self):
+        assert IntegerMatch(7)("seven days") == 1.0
+
+    def test_seventeen_no_match(self):
+        assert IntegerMatch(7)("seventeen") == 0.0
+
+    def test_seventy_no_match(self):
+        # "seventy" contains "seven" but lookahead blocks it ("ty" follows)
+        assert IntegerMatch(7)("seventy") == 0.0
+
+    def test_seventy_seven_digit_no_match(self):
+        assert IntegerMatch(7)("77") == 0.0
+
+    # ── _int_to_words ────────────────────────────────────────────────────────
+    def test_words_zero(self):
+        assert IntegerMatch._int_to_words(0) == "zero"
+
+    def test_words_four(self):
+        assert IntegerMatch._int_to_words(4) == "four"
+
+    def test_words_twenty(self):
+        assert IntegerMatch._int_to_words(20) == "twenty"
+
+    def test_words_twenty_four(self):
+        assert IntegerMatch._int_to_words(24) == "twenty-four"
+
+    def test_words_ninety_nine(self):
+        assert IntegerMatch._int_to_words(99) == "ninety-nine"
+
+    def test_words_hundred_is_none(self):
+        assert IntegerMatch._int_to_words(100) is None
+
+    def test_words_negative_is_none(self):
+        assert IntegerMatch._int_to_words(-1) is None
+
+
+class TestNumericMatch:
+    # ── init from fraction string ────────────────────────────────────────────
+    def test_init_fraction_string_2_3(self):
+        g = NumericMatch("2/3")
+        assert abs(g.value - 2 / 3) < 1e-12
+
+    def test_init_fraction_string_2_7(self):
+        g = NumericMatch("2/7")
+        assert abs(g.value - 2 / 7) < 1e-12
+
+    def test_init_float(self):
+        g = NumericMatch(0.5)
+        assert g.value == 0.5
+
+    def test_init_int(self):
+        g = NumericMatch(4)
+        assert g.value == 4.0
+
+    # ── exact decimal (default tolerance ≈ 0) ────────────────────────────────
+    def test_exact_decimal_match(self):
+        assert NumericMatch(0.5)("The answer is 0.5") == 1.0
+
+    def test_exact_decimal_no_match(self):
+        assert NumericMatch(0.5)("The answer is 0.6") == 0.0
+
+    def test_exact_integer_match(self):
+        assert NumericMatch(4)("The count is 4") == 1.0
+
+    # ── 2/7 ≈ 0.28571 with tolerance=1e-3 ───────────────────────────────────
+    def test_2_7_exact_fraction(self):
+        assert NumericMatch("2/7")("ratio is 2/7") == 1.0
+
+    def test_2_7_latex_fraction(self):
+        assert NumericMatch("2/7")("ratio is \\frac{2}{7}") == 1.0
+
+    def test_2_7_decimal_approx(self):
+        # 0.286 differs from 2/7 by ~3.3e-4 < 1e-3
+        assert NumericMatch("2/7", tolerance=1e-3)("approximately 0.286") == 1.0
+
+    def test_2_7_percentage(self):
+        # 28.6% = 0.286
+        assert NumericMatch("2/7", tolerance=1e-3)("about 28.6%") == 1.0
+
+    def test_2_7_percentage_too_rounded(self):
+        # 29% = 0.29, differs by ~4.3e-3 > 1e-3
+        assert NumericMatch("2/7", tolerance=1e-3)("about 29%") == 0.0
+
+    def test_2_7_wrong_fraction(self):
+        assert NumericMatch("2/7", tolerance=1e-3)("the answer is 2/3") == 0.0
+
+    def test_2_7_wrong_decimal(self):
+        assert NumericMatch("2/7", tolerance=1e-3)("the answer is 0.5") == 0.0
+
+    # ── 2/3 ≈ 0.6667 with tolerance=1e-3 ────────────────────────────────────
+    def test_2_3_exact_fraction(self):
+        assert NumericMatch("2/3")("answer is 2/3") == 1.0
+
+    def test_2_3_latex(self):
+        assert NumericMatch("2/3")("answer is \\frac{2}{3}") == 1.0
+
+    def test_2_3_decimal_approx(self):
+        # 0.667 differs from 2/3 by ~3.3e-4 < 1e-3
+        assert NumericMatch("2/3", tolerance=1e-3)("approximately 0.667") == 1.0
+
+    def test_2_3_percentage(self):
+        assert NumericMatch("2/3", tolerance=1e-3)("about 66.7%") == 1.0
+
+    def test_2_3_wrong_decimal(self):
+        assert NumericMatch("2/3", tolerance=1e-3)("the answer is 0.5") == 0.0
+
+    def test_2_3_wrong_fraction(self):
+        assert NumericMatch("2/3", tolerance=1e-3)("the answer is 2/7") == 0.0
+
+    # ── edge cases ────────────────────────────────────────────────────────────
+    def test_denominator_zero_no_crash(self):
+        # "4/0" is silently skipped (division by zero guard); "4" is also blocked
+        # by the lookahead (?![/%]) since it precedes "/". No crash, returns 0.0.
+        assert NumericMatch(4.0)("the value is 4/0") == 0.0
+
+    def test_latex_components_not_double_counted(self):
+        # \frac{2}{3}: the "2" and "3" inside braces should not be extracted as
+        # plain numbers, so NumericMatch(2) should NOT match \frac{2}{3}
+        assert NumericMatch(2.0)("\\frac{2}{3}") == 0.0
+
+    def test_fraction_components_not_double_counted(self):
+        # "2/3": neither "2" nor "3" should be extracted as standalone plain numbers
+        assert NumericMatch(2.0)("the fraction 2/3 is the answer") == 0.0
+        assert NumericMatch(3.0)("the fraction 2/3 is the answer") == 0.0
+
+    def test_percentage_component_not_double_counted(self):
+        # "66.7%": "66.7" should not also appear as a plain number
+        assert NumericMatch(66.7)("the answer is 66.7%") == 0.0
+
+
 class TestGraderFromConfig:
     def test_strict_string_inclusion(self):
         g = grader_from_config({"type": "StrictStringInclusion", "args": {"substring": "Au"}})
@@ -240,6 +441,18 @@ class TestGraderFromConfig:
     def test_unknown_type_raises(self):
         with pytest.raises(ValueError):
             grader_from_config({"type": "UnknownGrader"})
+
+    def test_integer_match(self):
+        g = grader_from_config({"type": "IntegerMatch", "args": {"value": 4}})
+        assert isinstance(g, IntegerMatch)
+        assert g("four losses") == 1.0
+        assert g("fourteen") == 0.0
+
+    def test_numeric_match(self):
+        g = grader_from_config({"type": "NumericMatch", "args": {"value": "2/7", "tolerance": 1e-3}})
+        assert isinstance(g, NumericMatch)
+        assert g("0.286") == 1.0
+        assert g("0.5") == 0.0
 
     def test_no_args_key(self):
         g = grader_from_config({"type": "StrictStringInclusion", "args": {"substring": "x"}})

@@ -68,6 +68,109 @@ class RegexMatch(BaseGrader):
         return 1.0 if re.search(self.pattern, response, self.flags) else 0.0
 
 
+_ONES = [
+    'zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine',
+    'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen',
+    'seventeen', 'eighteen', 'nineteen',
+]
+_TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+
+
+class IntegerMatch(BaseGrader):
+    """Matches an integer answer in both digit form and English word form (0–99).
+
+    The digit pattern rejects adjacent digits (so 4 won't match 14, 24, 40).
+    The word pattern rejects compound words via lookahead/lookbehind (so "four"
+    won't match "fourteen", "twenty-four", or "fourth").
+    """
+
+    def __init__(self, value: int):
+        self.value = value
+        self._patterns = self._build_patterns(value)
+
+    @staticmethod
+    def _int_to_words(n: int) -> str | None:
+        """Return English word for n (0–99), or None if out of range."""
+        if n < 0 or n > 99:
+            return None
+        if n < 20:
+            return _ONES[n]
+        if n % 10 == 0:
+            return _TENS[n // 10]
+        return f"{_TENS[n // 10]}-{_ONES[n % 10]}"
+
+    @staticmethod
+    def _build_patterns(n: int) -> list[tuple[str, int]]:
+        patterns = []
+        # Digit form: the number not adjacent to other digits
+        patterns.append((rf'(?<!\d){re.escape(str(n))}(?!\d)', 0))
+        # English word form (0–99 only)
+        word = IntegerMatch._int_to_words(n)
+        if word:
+            # Lookbehind blocks "twenty-four"→"four" and "fourteen"→"four"
+            # Lookahead  blocks "fourth", "fourteen", "forty-four"
+            patterns.append((
+                rf'(?<![a-zA-Z\d\-]){re.escape(word)}(?![a-zA-Z\d\-])',
+                re.IGNORECASE,
+            ))
+        return patterns
+
+    def __call__(self, response: str) -> float:
+        for pattern, flags in self._patterns:
+            if re.search(pattern, response, flags):
+                return 1.0
+        return 0.0
+
+
+class NumericMatch(BaseGrader):
+    """Matches a numeric answer expressed in any common form: plain decimal, fraction
+    (a/b), LaTeX \\frac{a}{b}, or percentage (e.g. 66.7%).
+
+    Args:
+        value: Target value as a float, int, or fraction string like ``"2/3"``.
+        tolerance: Maximum absolute difference to accept. Default 1e-9 (exact).
+                   Use e.g. ``1e-3`` to accept rounded decimals such as ``"0.286"``
+                   when the reference is ``"2/7"``.
+    """
+
+    def __init__(self, value: float | str, tolerance: float = 1e-9):
+        if isinstance(value, str) and '/' in value:
+            num, den = value.split('/', 1)
+            self.value = float(num) / float(den)
+        else:
+            self.value = float(value)
+        self.tolerance = tolerance
+
+    def __call__(self, response: str) -> float:
+        for candidate in self._extract_values(response):
+            if abs(candidate - self.value) <= self.tolerance:
+                return 1.0
+        return 0.0
+
+    @staticmethod
+    def _extract_values(text: str) -> list[float]:
+        """Extract all numeric values from text in all recognised forms."""
+        values = []
+        # 1. LaTeX fractions: \frac{a}{b}
+        for m in re.finditer(r'\\frac\{(-?\d+(?:\.\d+)?)\}\{(-?\d+(?:\.\d+)?)\}', text):
+            den = float(m.group(2))
+            if den != 0:
+                values.append(float(m.group(1)) / den)
+        # 2. Regular fractions: a/b
+        for m in re.finditer(r'(-?\d+(?:\.\d+)?)\s*/\s*(-?\d+(?:\.\d+)?)', text):
+            den = float(m.group(2))
+            if den != 0:
+                values.append(float(m.group(1)) / den)
+        # 3. Percentages: 66.7% → 0.667
+        for m in re.finditer(r'(-?\d+(?:\.\d+)?)\s*%', text):
+            values.append(float(m.group(1)) / 100.0)
+        # 4. Plain numbers — skip those adjacent to /, %, or LaTeX braces to
+        #    avoid double-counting fractions and percentages already extracted above
+        for m in re.finditer(r'(?<![/\d\{])-?\d+(?:\.\d+)?(?![/%\d\}])', text):
+            values.append(float(m.group()))
+        return values
+
+
 class LLMGrader(BaseGrader):
     def __init__(self, model: str = "openai/gpt-4.1-mini", prompt: str = DEFAULT_PROMPT,
                  reference: str = "", api_key: str = None):
@@ -148,6 +251,10 @@ def grader_from_config(config: dict, api_key: str = None) -> BaseGrader:
         if api_key and "api_key" not in llm_args:
             llm_args["api_key"] = api_key
         return LLMGrader(**llm_args)
+    elif grader_type == "IntegerMatch":
+        return IntegerMatch(**args)
+    elif grader_type == "NumericMatch":
+        return NumericMatch(**args)
     elif grader_type == "CustomGrader":
         raise ValueError("CustomGrader cannot be created from config")
     elif grader_type == "CompositeGrader":
