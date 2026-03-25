@@ -31,6 +31,7 @@ OPENROUTER_API_KEY=xxx uv run python eval.py \
 | `--output` | `./output` | Output directory |
 | `--timeout` | `120` | API timeout in seconds |
 | `--max_results` | `5` | Max web search results per query |
+| `--engine` | `exa` | Web search engine (`exa`, `google`, etc.) |
 | `--api_key` | env `OPENROUTER_API_KEY` | OpenRouter API key |
 
 ### YAML Config
@@ -83,11 +84,33 @@ All graders are callable: `grader(response: str) -> float` returning a score in 
 | Type | Args | Description |
 |------|------|-------------|
 | `StrictStringInclusion` | `substring`, `case_sensitive` | 1.0 if substring found in response |
+| `IntegerMatch` | `value` | Matches an integer in digit or English word form (0–99); blocks "fourteen", "twenty-four", "fourth" when matching 4 |
+| `NumericMatch` | `value`, `tolerance` | Extracts and compares numbers in decimal, fraction (`2/3`), LaTeX (`\frac{2}{3}`), or percentage form |
 | `SoftOverlap` | `reference`, `similarity_threshold` | Edit-distance based partial match |
 | `RegexMatch` | `pattern`, `flags` | 1.0 if regex matches response |
 | `LLMGrader` | `model`, `prompt`, `reference` | Calls OpenRouter chat completions to score |
 | `CompositeGrader` | `graders`, `logic`, `partial_credit` | Combines multiple graders (no LLMGrader) |
 | `CustomGrader` | `func` | Python callable, code-only |
+
+### IntegerMatch
+
+Matches an integer answer in both digit and English word form (0–99):
+
+```json
+{"type": "IntegerMatch", "args": {"value": 4}}
+```
+
+Matches: `"4 finals"`, `"four consecutive"`, `"Four"` — but not `"fourteen"`, `"twenty-four"`, or `"fourth"`.
+
+### NumericMatch
+
+Matches numeric answers in any common form. Default tolerance `1e-9` (exact); set higher for rounded answers:
+
+```json
+{"type": "NumericMatch", "args": {"value": "2/3", "tolerance": 1e-3}}
+```
+
+Matches: `"0.667"`, `"66.7%"`, `"\\frac{2}{3}"`, `"2/3"` — all within tolerance of 2/3.
 
 ### CompositeGrader Logic
 
