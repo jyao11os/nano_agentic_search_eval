@@ -173,6 +173,36 @@ Problem statuses: `success`, `timeout`, `api_error`, `grader_error`.
 
 **Resume logic:** The runner skips problems with `status: "success"` and writes `results.json` after each problem for crash-safety.
 
+## Ranking Models
+
+After running evaluations, compile a ranking across all models in the output directory:
+
+```bash
+uv run python rank.py --output ./output
+```
+
+This writes `./output/rankings.md` (Markdown table sorted by score, with cost and token breakdowns). Override the output path with `--rankings`:
+
+```bash
+uv run python rank.py --output ./output --rankings ./output/rankings.md
+```
+
+### CLI Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--output` | `./output` | Directory containing per-model result subdirectories |
+| `--rankings` | `{output}/rankings.md` | Path to write the rankings Markdown file |
+
+### Rankings Format
+
+| Rank | Model | Mean Score | Problems | Total Cost | Total Tokens | Avg Searches |
+|------|-------|-----------|----------|-----------|-------------|-------------|
+| 1 | `openai/gpt-5.4` | 0.850 ± 0.120 | 10/10 | $0.4200 | 7,000 | 1.8 |
+| 2 | `x-ai/grok-4` | 0.720 ± 0.200 | 9/10 | $0.2100 | 5,500 | 2.1 |
+
+Ties in mean score are broken by total cost (ascending), then total tokens (ascending). Models without cost data rank below models with cost data.
+
 ## Running Tests
 
 ```bash
