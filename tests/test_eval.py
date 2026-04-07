@@ -117,6 +117,22 @@ class TestParseArgs:
             assert config["output"] == "./output"
             assert config["timeout"] == 120
             assert config["engine"] == "exa"
+            assert config["max_trials"] == 5
+        finally:
+            sys.argv = old_argv
+
+    def test_max_trials_flag(self):
+        from eval import parse_args
+        old_argv = sys.argv
+        sys.argv = [
+            "eval.py",
+            "--problems", "tests/tiny_problems.jsonl",
+            "--model_list", "tests/tiny_model_list.txt",
+            "--max_trials", "3",
+        ]
+        try:
+            config = parse_args()
+            assert config["max_trials"] == 3
         finally:
             sys.argv = old_argv
 
@@ -406,3 +422,53 @@ class TestIntegration:
 
             assert results["problems"]["000"]["status"] == "timeout"
             assert results["problems"]["000"]["score"] is None
+
+    def test_run_model_eval_api_error_retries(self):
+        """Exhausting all trials on API error records api_error status."""
+        problems = [
+            {"problem": "Q1", "grader": {"type": "StrictStringInclusion", "args": {"substring": "A"}}},
+        ]
+        model_entry = {"model": "test/model", "provider": None, "short_name": "retry-model"}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = {
+                "output": tmpdir, "timeout": 10, "max_results": 5,
+                "api_key": "test-key", "max_trials": 3,
+            }
+
+            with patch("eval.requests.post", side_effect=Exception("server error")) as mock_post:
+                results = run_model_eval(model_entry, problems, config)
+
+            assert mock_post.call_count == 3  # retried max_trials times
+            assert results["problems"]["000"]["status"] == "api_error"
+            assert results["problems"]["000"]["score"] is None
+
+    def test_run_model_eval_api_error_recovers(self):
+        """Succeeds on a later trial after earlier API errors."""
+        problems = [
+            {"problem": "Q1", "grader": {"type": "StrictStringInclusion", "args": {"substring": "A"}}},
+        ]
+        model_entry = {"model": "test/model", "provider": None, "short_name": "recover-model"}
+
+        canned = {
+            "output": [
+                {"type": "message", "content": [{"type": "output_text", "text": "A is correct"}]}
+            ],
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = canned
+        mock_resp.raise_for_status = MagicMock()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config = {
+                "output": tmpdir, "timeout": 10, "max_results": 5,
+                "api_key": "test-key", "max_trials": 3,
+            }
+
+            # Fail twice, succeed on third attempt
+            with patch("eval.requests.post", side_effect=[Exception("err"), Exception("err"), mock_resp]) as mock_post:
+                results = run_model_eval(model_entry, problems, config)
+
+            assert mock_post.call_count == 3
+            assert results["problems"]["000"]["status"] == "success"

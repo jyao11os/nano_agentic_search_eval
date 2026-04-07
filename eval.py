@@ -54,6 +54,7 @@ def parse_args() -> dict:
     parser.add_argument("--max_results", type=int, default=None, help="Max web search results")
     parser.add_argument("--api_key", default=None, help="OpenRouter API key")
     parser.add_argument("--engine", default=None, help="Web search engine (default: exa)")
+    parser.add_argument("--max_trials", type=int, default=None, help="Max API attempts per problem on error (default: 5)")
 
     args = parser.parse_args()
 
@@ -62,6 +63,7 @@ def parse_args() -> dict:
         "timeout": 120,
         "max_results": 5,
         "engine": "exa",
+        "max_trials": 5,
     }
 
     if args.config:
@@ -85,6 +87,8 @@ def parse_args() -> dict:
         config["api_key"] = args.api_key
     if args.engine is not None:
         config["engine"] = args.engine
+    if args.max_trials is not None:
+        config["max_trials"] = args.max_trials
 
     if "problems" not in config:
         parser.error("--problems is required (or set in YAML config)")
@@ -213,29 +217,30 @@ def run_model_eval(model_entry: dict, problems: list, config: dict) -> dict:
 
         print(f"  Problem {prob_id}: {problem['problem'][:60]}...")
 
-        # Call API
-        try:
-            raw_response = call_responses_api(model_entry, problem["problem"], config)
-        except requests.Timeout:
+        # Call API with retries
+        max_trials = config.get("max_trials", 5)
+        raw_response = None
+        problem_status = None
+        for trial in range(max_trials):
+            try:
+                raw_response = call_responses_api(model_entry, problem["problem"], config)
+                break
+            except requests.Timeout:
+                print(f"    Timeout (trial {trial + 1}/{max_trials})", file=sys.stderr)
+                problem_status = "timeout"
+                break
+            except Exception as e:
+                print(f"    API error (trial {trial + 1}/{max_trials}): {e}", file=sys.stderr)
+                problem_status = "api_error"
+
+        if raw_response is None:
             results["problems"][prob_id] = {
                 "problem": problem["problem"],
                 "score": None,
                 "search_calls": 0,
                 "input_tokens": 0,
                 "output_tokens": 0,
-                "status": "timeout",
-            }
-            _write_results(results_path, results)
-            continue
-        except Exception as e:
-            print(f"    API error: {e}", file=sys.stderr)
-            results["problems"][prob_id] = {
-                "problem": problem["problem"],
-                "score": None,
-                "search_calls": 0,
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "status": "api_error",
+                "status": problem_status,
             }
             _write_results(results_path, results)
             continue

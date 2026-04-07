@@ -32,6 +32,7 @@ OPENROUTER_API_KEY=xxx uv run python eval.py \
 | `--timeout` | `120` | API timeout in seconds |
 | `--max_results` | `5` | Max web search results per query |
 | `--engine` | `exa` | Web search engine (`exa`, `google`, etc.) |
+| `--max_trials` | `5` | Max API attempts per problem on error before giving up |
 | `--api_key` | env `OPENROUTER_API_KEY` | OpenRouter API key |
 
 ### YAML Config
@@ -42,6 +43,7 @@ model_list: model_list.txt
 output: ./output
 timeout: 120
 max_results: 5
+max_trials: 5
 ```
 
 ```bash
