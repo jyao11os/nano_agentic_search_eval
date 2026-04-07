@@ -164,6 +164,7 @@ def compute_aggregates(results: dict) -> dict:
     search_calls = [p.get("search_calls", 0) for p in scored]
     input_tokens = [p.get("input_tokens", 0) for p in scored]
     output_tokens = [p.get("output_tokens", 0) for p in scored]
+    costs = [p["cost"] for p in scored if p.get("cost") is not None]
 
     return {
         "mean_score": statistics.mean(scores) if scores else 0.0,
@@ -173,6 +174,9 @@ def compute_aggregates(results: dict) -> dict:
         "mean_search_calls": statistics.mean(search_calls) if search_calls else 0.0,
         "mean_input_tokens": statistics.mean(input_tokens) if input_tokens else 0.0,
         "mean_output_tokens": statistics.mean(output_tokens) if output_tokens else 0.0,
+        "total_cost": sum(costs) if costs else 0.0,
+        "mean_cost": statistics.mean(costs) if costs else 0.0,
+        "max_cost": max(costs) if costs else 0.0,
     }
 
 
@@ -270,6 +274,7 @@ def run_model_eval(model_entry: dict, problems: list, config: dict) -> dict:
                 "search_calls": count_search_calls(raw_response),
                 "input_tokens": usage.get("input_tokens", 0),
                 "output_tokens": usage.get("output_tokens", 0),
+                "cost": usage.get("cost"),
                 "status": "grader_error",
             }
             _write_results(results_path, results)
@@ -282,6 +287,7 @@ def run_model_eval(model_entry: dict, problems: list, config: dict) -> dict:
             "search_calls": count_search_calls(raw_response),
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
+            "cost": usage.get("cost"),
             "status": "success",
         }
         _write_results(results_path, results)
@@ -305,6 +311,7 @@ def main():
         print(
             f"  Mean score: {agg.get('mean_score', 0):.3f} "
             f"({agg.get('num_scored', 0)}/{agg.get('total_problems', 0)} problems)"
+            + (f"  |  Total cost: ${agg['total_cost']:.4f}" if agg.get("total_cost") else "")
         )
 
 

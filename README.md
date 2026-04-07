@@ -145,6 +145,7 @@ Matches: `"0.667"`, `"66.7%"`, `"\\frac{2}{3}"`, `"2/3"` — all within toleranc
       "search_calls": 2,
       "input_tokens": 512,
       "output_tokens": 256,
+      "cost": 0.0206,
       "status": "success"
     }
   },
@@ -155,7 +156,10 @@ Matches: `"0.667"`, `"66.7%"`, `"\\frac{2}{3}"`, `"2/3"` — all within toleranc
     "num_scored": 10,
     "mean_search_calls": 1.8,
     "mean_input_tokens": 480,
-    "mean_output_tokens": 220
+    "mean_output_tokens": 220,
+    "total_cost": 0.42,
+    "mean_cost": 0.042,
+    "max_cost": 0.12
   }
 }
 ```
