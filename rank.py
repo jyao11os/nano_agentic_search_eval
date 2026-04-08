@@ -77,18 +77,18 @@ def render_markdown(ranked: list[dict], output_path: str) -> None:
 
 def parse_args() -> dict:
     parser = argparse.ArgumentParser(description="Rank evaluated models by score")
-    parser.add_argument("--output", default="./output", help="Output directory with model results")
-    parser.add_argument("--rankings", default=None, help="Path to write rankings Markdown (default: {output}/rankings.md)")
+    parser.add_argument("--results_dir", default="./output", help="Directory containing per-model results")
+    parser.add_argument("--rankings", default=None, help="Path to write rankings Markdown (default: {results_dir}/rankings.md)")
     args = parser.parse_args()
-    rankings = args.rankings if args.rankings is not None else os.path.join(args.output, "rankings.md")
-    return {"output": args.output, "rankings": rankings}
+    rankings = args.rankings if args.rankings is not None else os.path.join(args.results_dir, "rankings.md")
+    return {"results_dir": args.results_dir, "rankings": rankings}
 
 
 def main():
     config = parse_args()
-    results = load_all_results(config["output"])
+    results = load_all_results(config["results_dir"])
     if not results:
-        print(f"No results found in {config['output']}")
+        print(f"No results found in {config['results_dir']}")
         return
     ranked = rank_results(results)
     render_markdown(ranked, config["rankings"])

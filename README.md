@@ -178,21 +178,21 @@ Problem statuses: `success`, `timeout`, `api_error`, `grader_error`.
 After running evaluations, compile a ranking across all models in the output directory:
 
 ```bash
-uv run python rank.py --output ./output
+uv run python rank.py --results_dir ./output
 ```
 
 This writes `./output/rankings.md` (Markdown table sorted by score, with cost and token breakdowns). Override the output path with `--rankings`:
 
 ```bash
-uv run python rank.py --output ./output --rankings ./output/rankings.md
+uv run python rank.py --results_dir ./output --rankings ./output/rankings.md
 ```
 
 ### CLI Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--output` | `./output` | Directory containing per-model result subdirectories |
-| `--rankings` | `{output}/rankings.md` | Path to write the rankings Markdown file |
+| `--results_dir` | `./output` | Directory containing per-model result subdirectories |
+| `--rankings` | `{results_dir}/rankings.md` | Path to write the rankings Markdown file |
 
 ### Rankings Format
 

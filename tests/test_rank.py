@@ -40,9 +40,10 @@ class TestParseArgs:
         import sys
         from rank import parse_args
         old_argv = sys.argv
-        sys.argv = ["rank.py", "--output", "./my_output"]
+        sys.argv = ["rank.py", "--results_dir", "./my_output"]
         try:
             config = parse_args()
+            assert config["results_dir"] == "./my_output"
             assert config["rankings"] == "./my_output/rankings.md"
         finally:
             sys.argv = old_argv
@@ -51,7 +52,7 @@ class TestParseArgs:
         import sys
         from rank import parse_args
         old_argv = sys.argv
-        sys.argv = ["rank.py", "--output", "./my_output", "--rankings", "/tmp/custom.md"]
+        sys.argv = ["rank.py", "--results_dir", "./my_output", "--rankings", "/tmp/custom.md"]
         try:
             config = parse_args()
             assert config["rankings"] == "/tmp/custom.md"
