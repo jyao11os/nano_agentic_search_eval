@@ -1,12 +1,13 @@
 import argparse
 import json
 import os
+import statistics
 
 
-def load_all_results(output_dir: str) -> list[dict]:
-    """Load all results.json files from subdirectories of output_dir."""
+def load_all_results(results_dir: str) -> list[dict]:
+    """Load all results.json files from subdirectories of results_dir."""
     results = []
-    for entry in sorted(os.scandir(output_dir), key=lambda e: e.name):
+    for entry in sorted(os.scandir(results_dir), key=lambda e: e.name):
         if not entry.is_dir():
             continue
         results_path = os.path.join(entry.path, "results.json")
@@ -35,7 +36,50 @@ def rank_results(results: list[dict]) -> list[dict]:
     return sorted(results, key=sort_key)
 
 
-def render_markdown(ranked: list[dict], output_path: str) -> None:
+def rank_problems(all_results: list[dict]) -> list[dict]:
+    """Aggregate per-problem stats across all model results.
+
+    Sorted by avg_score desc, fully_correct desc, problem id asc.
+    Only problems with at least one scored attempt are included.
+    """
+    problem_data: dict[str, dict] = {}
+
+    for result in all_results:
+        for prob_id, prob in result.get("problems", {}).items():
+            score = prob.get("score")
+            if score is None:
+                continue
+            if prob_id not in problem_data:
+                problem_data[prob_id] = {
+                    "id": prob_id,
+                    "problem": prob.get("problem", ""),
+                    "scores": [],
+                    "fully_correct": 0,
+                }
+            problem_data[prob_id]["scores"].append(score)
+            if score == 1.0:
+                problem_data[prob_id]["fully_correct"] += 1
+
+    problems = []
+    for data in problem_data.values():
+        scores = data["scores"]
+        problems.append({
+            "id": data["id"],
+            "problem": data["problem"],
+            "avg_score": statistics.mean(scores),
+            "fully_correct": data["fully_correct"],
+            "num_attempted": len(scores),
+        })
+
+    problems.sort(key=lambda p: (-p["avg_score"], -p["fully_correct"], p["id"]))
+    return problems
+
+
+def _truncate(text: str, max_len: int = 60) -> str:
+    return text if len(text) <= max_len else text[:max_len] + "…"
+
+
+def render_markdown(ranked_models: list[dict], ranked_problems: list[dict], output_path: str) -> None:
     lines = [
         "# Model Rankings",
         "",
@@ -43,7 +87,7 @@ def render_markdown(ranked: list[dict], output_path: str) -> None:
         "|------|-------|-----------|----------|-----------|-------------|-------------|",
     ]
 
-    for rank, r in enumerate(ranked, start=1):
+    for rank, r in enumerate(ranked_models, start=1):
         model = r.get("model", "unknown")
         agg = r.get("aggregate", {})
 
@@ -69,6 +113,23 @@ def render_markdown(ranked: list[dict], output_path: str) -> None:
             f"| {cost_str} | {tokens_str} | {searches_str} |"
         )
 
+    lines += [
+        "",
+        "# Problem Rankings",
+        "",
+        "| Rank | Problem | Avg Score | Fully Correct | Models Attempted |",
+        "|------|---------|-----------|--------------|-----------------|",
+    ]
+
+    for rank, p in enumerate(ranked_problems, start=1):
+        problem_str = _truncate(p["problem"])
+        avg_score = p["avg_score"]
+        fully_correct = p["fully_correct"]
+        num_attempted = p["num_attempted"]
+        lines.append(
+            f"| {rank} | {problem_str} | {avg_score:.3f} | {fully_correct} | {num_attempted} |"
+        )
+
     lines.append("")
 
     with open(output_path, "w") as f:
@@ -90,9 +151,10 @@ def main():
     if not results:
         print(f"No results found in {config['results_dir']}")
         return
-    ranked = rank_results(results)
-    render_markdown(ranked, config["rankings"])
-    print(f"Ranked {len(ranked)} models → {config['rankings']}")
+    ranked_models = rank_results(results)
+    ranked_problems = rank_problems(results)
+    render_markdown(ranked_models, ranked_problems, config["rankings"])
+    print(f"Ranked {len(ranked_models)} models, {len(ranked_problems)} problems → {config['rankings']}")
 
 
 if __name__ == "__main__":

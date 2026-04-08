@@ -7,14 +7,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest
 
-from rank import load_all_results, rank_results, render_markdown, _total_tokens
+from rank import load_all_results, rank_results, rank_problems, render_markdown, _total_tokens, _truncate
 
 
 def make_results(model, mean_score, std_score=0.0, num_scored=2, total_problems=2,
-                 total_cost=None, total_input=0, total_output=0, mean_searches=1.0):
+                 total_cost=None, total_input=0, total_output=0, mean_searches=1.0,
+                 problems=None):
     return {
         "model": model,
-        "problems": {},
+        "problems": problems or {},
         "aggregate": {
             "mean_score": mean_score,
             "std_score": std_score,
@@ -26,6 +27,10 @@ def make_results(model, mean_score, std_score=0.0, num_scored=2, total_problems=
             "mean_search_calls": mean_searches,
         },
     }
+
+
+def make_problem_entry(text, score):
+    return {"problem": text, "score": score, "status": "success"}
 
 
 def write_results(tmpdir, short_name, data):
@@ -108,6 +113,21 @@ class TestTotalTokens:
         assert _total_tokens({}) == 0
 
 
+class TestTruncate:
+    def test_short_string_unchanged(self):
+        assert _truncate("hello", 60) == "hello"
+
+    def test_exact_length_unchanged(self):
+        s = "x" * 60
+        assert _truncate(s, 60) == s
+
+    def test_long_string_truncated(self):
+        s = "x" * 61
+        result = _truncate(s, 60)
+        assert result.endswith("…")
+        assert len(result) == 61  # 60 chars + ellipsis
+
+
 class TestRankResults:
     def test_higher_score_ranked_first(self):
         r = [
@@ -149,13 +169,99 @@ class TestRankResults:
         assert len(ranked) == 1
 
 
+class TestRankProblems:
+    def _results_with_problems(self, model, prob_scores: dict):
+        """prob_scores: {prob_id: score}"""
+        problems = {
+            pid: make_problem_entry(f"Question {pid}", score)
+            for pid, score in prob_scores.items()
+        }
+        return make_results(model, 0.5, problems=problems)
+
+    def test_avg_score_computed(self):
+        results = [
+            self._results_with_problems("a/m1", {"000": 1.0, "001": 0.5}),
+            self._results_with_problems("b/m2", {"000": 0.5, "001": 0.5}),
+        ]
+        ranked = rank_problems(results)
+        by_id = {p["id"]: p for p in ranked}
+        assert by_id["000"]["avg_score"] == pytest.approx(0.75)
+        assert by_id["001"]["avg_score"] == pytest.approx(0.5)
+
+    def test_higher_avg_score_ranked_first(self):
+        results = [
+            self._results_with_problems("a/m1", {"000": 0.5, "001": 1.0}),
+            self._results_with_problems("b/m2", {"000": 0.5, "001": 1.0}),
+        ]
+        ranked = rank_problems(results)
+        assert ranked[0]["id"] == "001"
+        assert ranked[1]["id"] == "000"
+
+    def test_tie_broken_by_fully_correct(self):
+        results = [
+            self._results_with_problems("a/m1", {"000": 1.0, "001": 0.5}),
+            self._results_with_problems("b/m2", {"000": 0.5, "001": 1.0}),
+        ]
+        ranked = rank_problems(results)
+        # Both have avg 0.75, but "000" has 1 fully correct, "001" has 1 too — tie on fully_correct
+        # then by id: "000" < "001"
+        assert ranked[0]["id"] == "000"
+
+    def test_tie_broken_by_id_when_fully_correct_equal(self):
+        results = [
+            self._results_with_problems("a/m1", {"001": 0.5, "000": 0.5}),
+        ]
+        ranked = rank_problems(results)
+        assert ranked[0]["id"] == "000"
+        assert ranked[1]["id"] == "001"
+
+    def test_fully_correct_count(self):
+        results = [
+            self._results_with_problems("a/m1", {"000": 1.0}),
+            self._results_with_problems("b/m2", {"000": 1.0}),
+            self._results_with_problems("c/m3", {"000": 0.5}),
+        ]
+        ranked = rank_problems(results)
+        assert ranked[0]["fully_correct"] == 2
+        assert ranked[0]["num_attempted"] == 3
+
+    def test_skips_none_scores(self):
+        results = [{
+            "model": "a/m",
+            "problems": {
+                "000": {"problem": "Q0", "score": None, "status": "api_error"},
+                "001": {"problem": "Q1", "score": 1.0, "status": "success"},
+            },
+            "aggregate": {},
+        }]
+        ranked = rank_problems(results)
+        assert len(ranked) == 1
+        assert ranked[0]["id"] == "001"
+
+    def test_empty_results(self):
+        assert rank_problems([]) == []
+
+    def test_problem_text_preserved(self):
+        results = [self._results_with_problems("a/m1", {"000": 0.8})]
+        ranked = rank_problems(results)
+        assert ranked[0]["problem"] == "Question 000"
+
+
 class TestRenderMarkdown:
+    def _render(self, ranked_models, ranked_problems=None):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            path = f.name
+        render_markdown(ranked_models, ranked_problems or [], path)
+        content = open(path).read()
+        os.unlink(path)
+        return content
+
     def test_output_file_created(self):
         ranked = [make_results("a/model", 0.8, total_cost=0.5, total_input=1000, total_output=200)]
         with tempfile.NamedTemporaryFile(suffix=".md", delete=False) as f:
             path = f.name
         try:
-            render_markdown(ranked, path)
+            render_markdown(ranked, [], path)
             assert os.path.exists(path)
         finally:
             os.unlink(path)
@@ -163,52 +269,53 @@ class TestRenderMarkdown:
     def test_contains_model_name(self):
         ranked = [make_results("openai/gpt-test", 0.75, total_cost=0.42,
                                total_input=4800, total_output=2200)]
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".md", delete=False) as f:
-            path = f.name
-        try:
-            render_markdown(ranked, path)
-            content = open(path).read()
-            assert "openai/gpt-test" in content
-            assert "0.750" in content
-            assert "$0.4200" in content
-            assert "7,000" in content  # 4800 + 2200
-        finally:
-            os.unlink(path)
+        content = self._render(ranked)
+        assert "openai/gpt-test" in content
+        assert "0.750" in content
+        assert "$0.4200" in content
+        assert "7,000" in content  # 4800 + 2200
 
-    def test_rank_column(self):
-        ranked = [
-            make_results("a/first", 0.9),
-            make_results("b/second", 0.5),
-        ]
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".md", delete=False) as f:
-            path = f.name
-        try:
-            render_markdown(ranked, path)
-            lines = open(path).read().splitlines()
-            data_lines = [l for l in lines if l.startswith("| ") and "Rank" not in l and "---" not in l]
-            assert data_lines[0].startswith("| 1 |")
-            assert data_lines[1].startswith("| 2 |")
-        finally:
-            os.unlink(path)
+    def test_model_rank_column(self):
+        ranked = [make_results("a/first", 0.9), make_results("b/second", 0.5)]
+        content = self._render(ranked)
+        lines = content.splitlines()
+        model_rows = [l for l in lines if l.startswith("| ") and "Rank" not in l
+                      and "---" not in l and "Problem Rankings" not in l
+                      and "Problem |" not in l and "Question" not in l]
+        assert model_rows[0].startswith("| 1 |")
+        assert model_rows[1].startswith("| 2 |")
 
     def test_no_cost_renders_dash(self):
         ranked = [make_results("a/model", 0.5, total_cost=None)]
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".md", delete=False) as f:
-            path = f.name
-        try:
-            render_markdown(ranked, path)
-            content = open(path).read()
-            assert "| — |" in content
-        finally:
-            os.unlink(path)
+        assert "| — |" in self._render(ranked)
 
     def test_zero_tokens_renders_dash(self):
         ranked = [make_results("a/model", 0.5, total_input=0, total_output=0)]
-        with tempfile.NamedTemporaryFile(mode="r", suffix=".md", delete=False) as f:
-            path = f.name
-        try:
-            render_markdown(ranked, path)
-            content = open(path).read()
-            assert "| — |" in content
-        finally:
-            os.unlink(path)
+        assert "| — |" in self._render(ranked)
+
+    def test_problem_rankings_section_present(self):
+        problems = [{"id": "000", "problem": "What is 2+2?", "avg_score": 0.9,
+                     "fully_correct": 2, "num_attempted": 3}]
+        content = self._render([make_results("a/m", 0.9)], problems)
+        assert "# Problem Rankings" in content
+        assert "What is 2+2?" in content
+        assert "0.900" in content
+
+    def test_problem_text_truncated(self):
+        long_q = "A" * 70
+        problems = [{"id": "000", "problem": long_q, "avg_score": 1.0,
+                     "fully_correct": 1, "num_attempted": 1}]
+        content = self._render([make_results("a/m", 1.0)], problems)
+        assert long_q not in content
+        assert "…" in content
+
+    def test_problem_rank_column(self):
+        problems = [
+            {"id": "000", "problem": "Q0", "avg_score": 1.0, "fully_correct": 2, "num_attempted": 2},
+            {"id": "001", "problem": "Q1", "avg_score": 0.5, "fully_correct": 0, "num_attempted": 2},
+        ]
+        content = self._render([make_results("a/m", 0.75)], problems)
+        lines = content.splitlines()
+        prob_rows = [l for l in lines if "| Q" in l]
+        assert prob_rows[0].startswith("| 1 |")
+        assert prob_rows[1].startswith("| 2 |")

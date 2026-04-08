@@ -196,12 +196,19 @@ uv run python rank.py --results_dir ./output --rankings ./output/rankings.md
 
 ### Rankings Format
 
+**Model rankings** — sorted by mean score, ties broken by total cost (asc), then total tokens (asc). Models without cost data rank last.
+
 | Rank | Model | Mean Score | Problems | Total Cost | Total Tokens | Avg Searches |
 |------|-------|-----------|----------|-----------|-------------|-------------|
 | 1 | `openai/gpt-5.4` | 0.850 ± 0.120 | 10/10 | $0.4200 | 7,000 | 1.8 |
 | 2 | `x-ai/grok-4` | 0.720 ± 0.200 | 9/10 | $0.2100 | 5,500 | 2.1 |
 
-Ties in mean score are broken by total cost (ascending), then total tokens (ascending). Models without cost data rank below models with cost data.
+**Problem rankings** — sorted by average score across all models, ties broken by number of fully-correct models (desc), then problem index (asc). Problem text is truncated to 60 characters.
+
+| Rank | Problem | Avg Score | Fully Correct | Models Attempted |
+|------|---------|-----------|--------------|-----------------|
+| 1 | Which team won the 2025-2026 Carabao Cup? | 0.950 | 9 | 10 |
+| 2 | As of 2026, how many consecutive League Cup… | 0.700 | 5 | 10 |
 
 ## Running Tests
 
